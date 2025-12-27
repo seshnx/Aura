@@ -1,0 +1,89 @@
+name: Build
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup CMake
+      uses: lukka/get-cmake@latest
+
+    - name: Configure CMake
+      run: cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
+
+    - name: Build
+      run: cmake --build build --config Release
+
+    - name: Upload VST3 Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: SeshNx-Aura-Windows-VST3
+        path: build/Aura_artefacts/Release/VST3/
+
+    - name: Upload Standalone Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: SeshNx-Aura-Windows-Standalone
+        path: build/Aura_artefacts/Release/Standalone/
+
+  build-macos:
+    runs-on: macos-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup CMake
+      uses: lukka/get-cmake@latest
+
+    - name: Configure CMake
+      run: cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
+
+    - name: Build
+      run: cmake --build build --config Release
+
+    - name: Upload VST3 Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: SeshNx-Aura-macOS-VST3
+        path: build/Aura_artefacts/Release/VST3/
+
+    - name: Upload AU Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: SeshNx-Aura-macOS-AU
+        path: build/Aura_artefacts/Release/AU/
+
+    - name: Upload Standalone Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: SeshNx-Aura-macOS-Standalone
+        path: build/Aura_artefacts/Release/Standalone/
+
+  test-windows:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup CMake
+      uses: lukka/get-cmake@latest
+
+    - name: Configure CMake with Tests
+      run: cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DAURA_BUILD_TESTS=ON
+
+    - name: Build Tests
+      run: cmake --build build --config Release --target Aura_Tests
+
+    - name: Run Tests
+      run: ctest --test-dir build --build-config Release --output-on-failure
