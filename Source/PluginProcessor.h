@@ -70,6 +70,17 @@ private:
     std::atomic<float>* inputGainParam = nullptr;
     std::atomic<float>* outputGainParam = nullptr;
 
+    // Modulation parameters
+    std::atomic<float>* modDepthParam = nullptr;
+    std::atomic<float>* modRateParam = nullptr;
+
+    // Multi-band decay parameters
+    std::atomic<float>* lowDecayParam = nullptr;
+    std::atomic<float>* midDecayParam = nullptr;
+    std::atomic<float>* highDecayParam = nullptr;
+    std::atomic<float>* crossoverLowParam = nullptr;
+    std::atomic<float>* crossoverHighParam = nullptr;
+
     float lastInputGain = 1.0f;
     float lastOutputGain = 1.0f;
 

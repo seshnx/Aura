@@ -24,6 +24,17 @@ AuraProcessor::AuraProcessor()
     lowCutParam = apvts.getRawParameterValue(ParamIDs::lowCut);
     inputGainParam = apvts.getRawParameterValue(ParamIDs::inputGain);
     outputGainParam = apvts.getRawParameterValue(ParamIDs::outputGain);
+
+    // Modulation parameters
+    modDepthParam = apvts.getRawParameterValue(ParamIDs::modDepth);
+    modRateParam = apvts.getRawParameterValue(ParamIDs::modRate);
+
+    // Multi-band decay parameters
+    lowDecayParam = apvts.getRawParameterValue(ParamIDs::lowDecay);
+    midDecayParam = apvts.getRawParameterValue(ParamIDs::midDecay);
+    highDecayParam = apvts.getRawParameterValue(ParamIDs::highDecay);
+    crossoverLowParam = apvts.getRawParameterValue(ParamIDs::crossoverLow);
+    crossoverHighParam = apvts.getRawParameterValue(ParamIDs::crossoverHigh);
 }
 
 AuraProcessor::~AuraProcessor() = default;
@@ -84,6 +95,17 @@ void AuraProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuf
     float effectiveSize = sizeVal * roomSizeMultiplier;
     float effectiveDecay = decayVal * roomDecayMultiplier;
 
+    // Get modulation parameters
+    float modDepthVal = modDepthParam->load() / 100.0f;
+    float modRateVal = modRateParam->load() / 50.0f;  // 0-2 range
+
+    // Get multi-band decay parameters
+    float lowDecayVal = lowDecayParam->load() / 100.0f;    // 0.5-2.0 range
+    float midDecayVal = midDecayParam->load() / 100.0f;
+    float highDecayVal = highDecayParam->load() / 100.0f;
+    float crossoverLowVal = crossoverLowParam->load();
+    float crossoverHighVal = crossoverHighParam->load();
+
     // Update DSP parameters
     reverb.setSize(effectiveSize);
     reverb.setDecay(effectiveDecay);
@@ -92,6 +114,17 @@ void AuraProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuf
     reverb.setWidth(widthVal);
     reverb.setHighCut(highCutVal);
     reverb.setLowCut(lowCutVal);
+
+    // Set modulation parameters
+    reverb.setModulationDepth(modDepthVal);
+    reverb.setModulationRate(modRateVal);
+
+    // Set multi-band decay parameters
+    reverb.setLowDecayMultiplier(lowDecayVal);
+    reverb.setMidDecayMultiplier(midDecayVal);
+    reverb.setHighDecayMultiplier(highDecayVal);
+    reverb.setCrossoverLow(crossoverLowVal);
+    reverb.setCrossoverHigh(crossoverHighVal);
 
     earlyReflections.setSize(erSizeVal * roomSizeMultiplier);
     earlyReflections.setLevel(erLevelVal);

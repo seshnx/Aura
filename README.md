@@ -4,6 +4,8 @@
 
 Aura is a professional-grade algorithmic reverb plugin that delivers lush, natural-sounding room ambience. Built on a classic Schroeder-style architecture with modern enhancements, Aura offers intuitive controls for crafting everything from intimate vocal booths to expansive cathedral spaces.
 
+**Part of the SeshNx Plugin Suite by Amalia Media LLC**
+
 ## Features
 
 ### Room Simulation
@@ -101,8 +103,22 @@ Source/
 
 Copyright (c) 2024 Amalia Media LLC. All rights reserved.
 
+Proprietary software - Distribution prohibited without explicit permission.
+
 See [LICENSE](LICENSE) for details.
 
 ---
 
-**SeshNx** - Professional Audio Tools
+## Version
+
+**v1.0.0**
+
+---
+
+## Support
+
+For technical support, bug reports, or feature requests, please contact the development team through official SeshNx channels.
+
+---
+
+*Part of the [SeshNx Plugin Suite](https://seshnx.com) by Amalia Media LLC*

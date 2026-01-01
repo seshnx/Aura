@@ -75,6 +75,17 @@ namespace ParamIDs
     // I/O
     inline const juce::String inputGain { "inputGain" };
     inline const juce::String outputGain { "outputGain" };
+
+    // Modulation
+    inline const juce::String modDepth { "modDepth" };
+    inline const juce::String modRate { "modRate" };
+
+    // Multi-band decay
+    inline const juce::String lowDecay { "lowDecay" };
+    inline const juce::String midDecay { "midDecay" };
+    inline const juce::String highDecay { "highDecay" };
+    inline const juce::String crossoverLow { "crossoverLow" };
+    inline const juce::String crossoverHigh { "crossoverHigh" };
 }
 
 //==============================================================================
@@ -95,6 +106,17 @@ namespace Defaults
     constexpr float lowCut = 80.0f;      // Hz
     constexpr float inputGain = 0.0f;    // dB
     constexpr float outputGain = 0.0f;   // dB
+
+    // Modulation
+    constexpr float modDepth = 30.0f;    // %
+    constexpr float modRate = 50.0f;     // %
+
+    // Multi-band decay
+    constexpr float lowDecay = 100.0f;   // % (1.0x multiplier)
+    constexpr float midDecay = 100.0f;   // %
+    constexpr float highDecay = 100.0f;  // %
+    constexpr float crossoverLow = 200.0f;   // Hz
+    constexpr float crossoverHigh = 4000.0f; // Hz
 }
 
 //==============================================================================
@@ -233,6 +255,66 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout
         juce::NormalisableRange<float>(Ranges::gainMin, Ranges::gainMax, 0.1f),
         Defaults::outputGain,
         juce::AudioParameterFloatAttributes().withLabel("dB")));
+
+    // Modulation Depth
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{ ParamIDs::modDepth, 1 },
+        "Mod Depth",
+        juce::NormalisableRange<float>(0.0f, 100.0f, 0.1f),
+        Defaults::modDepth,
+        juce::AudioParameterFloatAttributes().withLabel("%")));
+
+    // Modulation Rate
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{ ParamIDs::modRate, 1 },
+        "Mod Rate",
+        juce::NormalisableRange<float>(0.0f, 100.0f, 0.1f),
+        Defaults::modRate,
+        juce::AudioParameterFloatAttributes().withLabel("%")));
+
+    // Low Decay Multiplier
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{ ParamIDs::lowDecay, 1 },
+        "Low Decay",
+        juce::NormalisableRange<float>(50.0f, 200.0f, 1.0f),
+        Defaults::lowDecay,
+        juce::AudioParameterFloatAttributes().withLabel("%")));
+
+    // Mid Decay Multiplier
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{ ParamIDs::midDecay, 1 },
+        "Mid Decay",
+        juce::NormalisableRange<float>(50.0f, 200.0f, 1.0f),
+        Defaults::midDecay,
+        juce::AudioParameterFloatAttributes().withLabel("%")));
+
+    // High Decay Multiplier
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{ ParamIDs::highDecay, 1 },
+        "High Decay",
+        juce::NormalisableRange<float>(50.0f, 200.0f, 1.0f),
+        Defaults::highDecay,
+        juce::AudioParameterFloatAttributes().withLabel("%")));
+
+    // Crossover Low Frequency
+    auto xoverLowRange = juce::NormalisableRange<float>(80.0f, 400.0f, 1.0f);
+    xoverLowRange.setSkewForCentre(200.0f);
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{ ParamIDs::crossoverLow, 1 },
+        "X-Over Low",
+        xoverLowRange,
+        Defaults::crossoverLow,
+        juce::AudioParameterFloatAttributes().withLabel("Hz")));
+
+    // Crossover High Frequency
+    auto xoverHighRange = juce::NormalisableRange<float>(2000.0f, 8000.0f, 1.0f);
+    xoverHighRange.setSkewForCentre(4000.0f);
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{ ParamIDs::crossoverHigh, 1 },
+        "X-Over High",
+        xoverHighRange,
+        Defaults::crossoverHigh,
+        juce::AudioParameterFloatAttributes().withLabel("Hz")));
 
     return { params.begin(), params.end() };
 }

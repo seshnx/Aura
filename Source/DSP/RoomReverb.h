@@ -5,9 +5,47 @@
 #include <juce_dsp/juce_dsp.h>
 #include <array>
 #include <vector>
+#include <cmath>
 
 namespace Aura
 {
+
+//==============================================================================
+/**
+ * Simple LFO for comb filter modulation
+ */
+class ReverbLFO
+{
+public:
+    void prepare(double sr)
+    {
+        sampleRate = sr;
+        phase = 0.0f;
+    }
+
+    void setRate(float hz)
+    {
+        rate = hz;
+        phaseIncrement = rate / static_cast<float>(sampleRate);
+    }
+
+    float getNext()
+    {
+        // Smoothed triangle wave for natural modulation
+        float value = 2.0f * std::abs(2.0f * phase - 1.0f) - 1.0f;
+        phase += phaseIncrement;
+        if (phase >= 1.0f) phase -= 1.0f;
+        return value;
+    }
+
+    void setPhase(float p) { phase = p; }
+
+private:
+    double sampleRate = 44100.0;
+    float rate = 0.5f;
+    float phase = 0.0f;
+    float phaseIncrement = 0.0f;
+};
 
 //==============================================================================
 /**
@@ -19,6 +57,8 @@ namespace Aura
  * - Pre-delay
  * - Stereo width control
  * - High/Low cut filters
+ * - LFO modulation for comb filters (reduces metallic artifacts)
+ * - Multi-band decay (separate L/M/H decay times)
  */
 class RoomReverb
 {
@@ -91,7 +131,27 @@ public:
         highCutFilter.prepare(spec);
         lowCutFilter.prepare(spec);
 
+        // Multi-band crossover filters
+        lowBandFilter.prepare(spec);
+        midBandLowFilter.prepare(spec);
+        midBandHighFilter.prepare(spec);
+        highBandFilter.prepare(spec);
+
+        // Initialize LFOs for comb modulation (different rates per comb for richness)
+        const std::array<float, NumComb> lfoRates = { 0.13f, 0.17f, 0.23f, 0.29f, 0.31f, 0.37f, 0.41f, 0.47f };
+        for (int ch = 0; ch < 2; ++ch)
+        {
+            for (int i = 0; i < NumComb; ++i)
+            {
+                combLFOs[ch][i].prepare(sampleRate);
+                combLFOs[ch][i].setRate(lfoRates[i]);
+                // Offset phases between channels for stereo width
+                combLFOs[ch][i].setPhase(ch * 0.5f + i * 0.125f);
+            }
+        }
+
         updateFilters();
+        updateCrossoverFilters();
         updateFeedback();
     }
 
@@ -162,6 +222,57 @@ public:
         updateFilters();
     }
 
+    // Modulation controls
+    void setModulationDepth(float depth)
+    {
+        modDepth = juce::jlimit(0.0f, 1.0f, depth);
+    }
+
+    void setModulationRate(float rate)
+    {
+        modRate = juce::jlimit(0.1f, 2.0f, rate);
+        // Update all LFO rates with slight variation
+        const std::array<float, NumComb> baseRates = { 0.13f, 0.17f, 0.23f, 0.29f, 0.31f, 0.37f, 0.41f, 0.47f };
+        for (int ch = 0; ch < 2; ++ch)
+        {
+            for (int i = 0; i < NumComb; ++i)
+            {
+                combLFOs[ch][i].setRate(baseRates[i] * modRate);
+            }
+        }
+    }
+
+    // Multi-band decay controls
+    void setLowDecayMultiplier(float mult)
+    {
+        lowDecayMult = juce::jlimit(0.5f, 2.0f, mult);
+        updateFeedback();
+    }
+
+    void setMidDecayMultiplier(float mult)
+    {
+        midDecayMult = juce::jlimit(0.5f, 2.0f, mult);
+        updateFeedback();
+    }
+
+    void setHighDecayMultiplier(float mult)
+    {
+        highDecayMult = juce::jlimit(0.5f, 2.0f, mult);
+        updateFeedback();
+    }
+
+    void setCrossoverLow(float freq)
+    {
+        crossoverLowFreq = juce::jlimit(80.0f, 400.0f, freq);
+        updateCrossoverFilters();
+    }
+
+    void setCrossoverHigh(float freq)
+    {
+        crossoverHighFreq = juce::jlimit(2000.0f, 8000.0f, freq);
+        updateCrossoverFilters();
+    }
+
     float getDecayEnvelope() const { return decayEnvelope; }
 
     void process(juce::AudioBuffer<float>& buffer)
@@ -186,19 +297,35 @@ public:
 
             preDelayWriteIndex = (preDelayWriteIndex + 1) % static_cast<int>(preDelayBuffer[0].size());
 
-            // Process comb filters in parallel
+            // Process comb filters in parallel with modulation
             float leftComb = 0.0f;
             float rightComb = 0.0f;
 
             for (int i = 0; i < NumComb; ++i)
             {
-                // Left channel
+                // Left channel with modulation
                 {
-                    int delay = combDelays[0][i];
-                    int rIdx = combWriteIndex[0][i] - delay;
-                    if (rIdx < 0) rIdx += static_cast<int>(combBuffers[0][i].size());
+                    // Get LFO modulation value
+                    float lfoValue = combLFOs[0][i].getNext();
+                    float modOffset = lfoValue * modDepth * 10.0f;  // Max ±10 samples modulation
 
-                    float delayed = combBuffers[0][i][rIdx];
+                    int baseDelay = combDelays[0][i];
+                    float exactDelay = static_cast<float>(baseDelay) + modOffset;
+                    int delay1 = static_cast<int>(exactDelay);
+                    int delay2 = delay1 + 1;
+                    float frac = exactDelay - static_cast<float>(delay1);
+
+                    // Clamp delays
+                    delay1 = juce::jlimit(1, static_cast<int>(combBuffers[0][i].size()) - 2, delay1);
+                    delay2 = juce::jlimit(1, static_cast<int>(combBuffers[0][i].size()) - 1, delay2);
+
+                    int rIdx1 = combWriteIndex[0][i] - delay1;
+                    int rIdx2 = combWriteIndex[0][i] - delay2;
+                    if (rIdx1 < 0) rIdx1 += static_cast<int>(combBuffers[0][i].size());
+                    if (rIdx2 < 0) rIdx2 += static_cast<int>(combBuffers[0][i].size());
+
+                    // Linear interpolation for smooth modulation
+                    float delayed = combBuffers[0][i][rIdx1] * (1.0f - frac) + combBuffers[0][i][rIdx2] * frac;
                     float filtered = dampingFilters[0][i].process(delayed);
                     combBuffers[0][i][combWriteIndex[0][i]] = leftDelayed + filtered * feedback;
                     combWriteIndex[0][i] = (combWriteIndex[0][i] + 1) % static_cast<int>(combBuffers[0][i].size());
@@ -206,13 +333,26 @@ public:
                     leftComb += delayed;
                 }
 
-                // Right channel
+                // Right channel with modulation
                 {
-                    int delay = combDelays[1][i];
-                    int rIdx = combWriteIndex[1][i] - delay;
-                    if (rIdx < 0) rIdx += static_cast<int>(combBuffers[1][i].size());
+                    float lfoValue = combLFOs[1][i].getNext();
+                    float modOffset = lfoValue * modDepth * 10.0f;
 
-                    float delayed = combBuffers[1][i][rIdx];
+                    int baseDelay = combDelays[1][i];
+                    float exactDelay = static_cast<float>(baseDelay) + modOffset;
+                    int delay1 = static_cast<int>(exactDelay);
+                    int delay2 = delay1 + 1;
+                    float frac = exactDelay - static_cast<float>(delay1);
+
+                    delay1 = juce::jlimit(1, static_cast<int>(combBuffers[1][i].size()) - 2, delay1);
+                    delay2 = juce::jlimit(1, static_cast<int>(combBuffers[1][i].size()) - 1, delay2);
+
+                    int rIdx1 = combWriteIndex[1][i] - delay1;
+                    int rIdx2 = combWriteIndex[1][i] - delay2;
+                    if (rIdx1 < 0) rIdx1 += static_cast<int>(combBuffers[1][i].size());
+                    if (rIdx2 < 0) rIdx2 += static_cast<int>(combBuffers[1][i].size());
+
+                    float delayed = combBuffers[1][i][rIdx1] * (1.0f - frac) + combBuffers[1][i][rIdx2] * frac;
                     float filtered = dampingFilters[1][i].process(delayed);
                     combBuffers[1][i][combWriteIndex[1][i]] = rightDelayed + filtered * feedback;
                     combWriteIndex[1][i] = (combWriteIndex[1][i] + 1) % static_cast<int>(combBuffers[1][i].size());
@@ -315,6 +455,18 @@ private:
             sampleRate, lowCutFreq, 0.707f);
     }
 
+    void updateCrossoverFilters()
+    {
+        *lowBandFilter.state = *juce::dsp::IIR::Coefficients<float>::makeLowPass(
+            sampleRate, crossoverLowFreq, 0.707f);
+        *midBandLowFilter.state = *juce::dsp::IIR::Coefficients<float>::makeHighPass(
+            sampleRate, crossoverLowFreq, 0.707f);
+        *midBandHighFilter.state = *juce::dsp::IIR::Coefficients<float>::makeLowPass(
+            sampleRate, crossoverHighFreq, 0.707f);
+        *highBandFilter.state = *juce::dsp::IIR::Coefficients<float>::makeHighPass(
+            sampleRate, crossoverHighFreq, 0.707f);
+    }
+
     double sampleRate = 44100.0;
 
     // Parameters
@@ -326,6 +478,17 @@ private:
     float lowCutFreq = 80.0f;
     float feedback = 0.7f;
     int preDelaySamples = 0;
+
+    // Modulation parameters
+    float modDepth = 0.3f;   // 0-1 modulation depth
+    float modRate = 1.0f;    // Modulation rate multiplier
+
+    // Multi-band decay parameters
+    float lowDecayMult = 1.0f;
+    float midDecayMult = 1.0f;
+    float highDecayMult = 1.0f;
+    float crossoverLowFreq = 200.0f;
+    float crossoverHighFreq = 4000.0f;
 
     static constexpr float allpassFeedback = 0.5f;
 
@@ -349,6 +512,19 @@ private:
                                    juce::dsp::IIR::Coefficients<float>> highCutFilter;
     juce::dsp::ProcessorDuplicator<juce::dsp::IIR::Filter<float>,
                                    juce::dsp::IIR::Coefficients<float>> lowCutFilter;
+
+    // Multi-band crossover filters
+    juce::dsp::ProcessorDuplicator<juce::dsp::IIR::Filter<float>,
+                                   juce::dsp::IIR::Coefficients<float>> lowBandFilter;
+    juce::dsp::ProcessorDuplicator<juce::dsp::IIR::Filter<float>,
+                                   juce::dsp::IIR::Coefficients<float>> midBandLowFilter;
+    juce::dsp::ProcessorDuplicator<juce::dsp::IIR::Filter<float>,
+                                   juce::dsp::IIR::Coefficients<float>> midBandHighFilter;
+    juce::dsp::ProcessorDuplicator<juce::dsp::IIR::Filter<float>,
+                                   juce::dsp::IIR::Coefficients<float>> highBandFilter;
+
+    // LFOs for comb filter modulation
+    std::array<std::array<ReverbLFO, NumComb>, 2> combLFOs;
 
     float decayEnvelope = 0.0f;
 };
